@@ -126,7 +126,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
 
   if (!isStream) {
     // Non-streaming: collect all events → single JSON
-    let buf = '', fullText = '', fullReasoning = '';
+    let buf = '', fullText = '', fullReasoning = '', errorMsg = '';
     const toolCalls = []; let toolPart = null;
 
 
@@ -138,6 +138,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
         const t = line.trim(); if (!t) continue;
         let evt; try { evt = JSON.parse(t); } catch { continue; }
         switch (evt.type) {
+          case 'error': errorMsg = evt.error?.message || JSON.stringify(evt.error); break;
           case 'text-delta': fullText += evt.text || ''; break;
           case 'reasoning-delta': fullReasoning += evt.text || ''; break;
           case 'tool-input-start': toolPart = { id: evt.id, type: 'function', function: { name: evt.toolName, arguments: '' } }; toolCalls.push(toolPart); break;
@@ -149,7 +150,13 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
 
     proxyRes.on('end', () => {
       if (buf.trim()) {
-        try { const evt = JSON.parse(buf.trim()); if (evt.type === 'text-delta') fullText += evt.text || ''; else if (evt.type === 'reasoning-delta') fullReasoning += evt.text || ''; } catch {}
+        try { const evt = JSON.parse(buf.trim()); if (evt.type === 'error') errorMsg = evt.error?.message || JSON.stringify(evt.error); else if (evt.type === 'text-delta') fullText += evt.text || ''; else if (evt.type === 'reasoning-delta') fullReasoning += evt.text || ''; } catch {}
+      }
+      if (errorMsg) {
+        log(`[error] ${model} | ${errorMsg}`);
+        res.writeHead(502, { ...CORS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: errorMsg, type: 'upstream_error', code: 'context_length_exceeded' } }));
+        return;
       }
       const text = fullText || fullReasoning;
       const msg = { role: 'assistant', content: text || null };
@@ -165,11 +172,17 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
 
   } else {
     // Streaming: CommandCode NDJSON → OpenAI SSE chunks
-    res.writeHead(200, { ...CORS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+    let buf = '', toolCalls = [], toolIdx = 0, roleSent = false, tChars = 0, rChars = 0, errorMsg = '';
 
-    let buf = '', toolCalls = [], toolIdx = 0, roleSent = false, tChars = 0, rChars = 0;
+    const writeErr = () => {
+      if (!res.headersSent) res.writeHead(200, { ...CORS, 'Content-Type': 'text/event-stream' });
+      res.end(sse({ error: { message: errorMsg, type: 'upstream_error' } }));
+    };
 
-    const write = (chunk) => res.write(sse(chunk));
+    const write = (chunk) => {
+      if (!res.headersSent) res.writeHead(200, { ...CORS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+      res.write(sse(chunk));
+    };
     const base = () => ({ id: genId, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model });
     const ensureRole = () => { if (!roleSent) { roleSent = true; write({ ...base(), choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }); } };
 
@@ -181,6 +194,10 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
         const t = line.trim(); if (!t) continue;
         let evt; try { evt = JSON.parse(t); } catch { continue; }
         switch (evt.type) {
+          case 'error':
+            errorMsg = evt.error?.message || JSON.stringify(evt.error); writeErr();
+            log(`[error] ${model} | ${errorMsg}`);
+            break;
           case 'text-start': toolCalls = []; toolIdx = 0; roleSent = true; write({ ...base(), choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }); break;
           case 'text-delta': if (evt.text) { tChars += evt.text.length; write({ ...base(), choices: [{ index: 0, delta: { content: evt.text }, finish_reason: null }] }); } break;
           case 'reasoning-delta': if (evt.text) { rChars += evt.text.length; ensureRole(); write({ ...base(), choices: [{ index: 0, delta: { content: evt.text }, finish_reason: null }] }); } break;
@@ -197,6 +214,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
     });
 
     proxyRes.on('end', () => {
+      if (errorMsg) return; // already handled by error event
       const reason = toolCalls.length > 0 ? 'tool_calls' : 'stop';
       write({ id: genId, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: {}, finish_reason: reason }] });
       res.write('data: [DONE]\n\n'); res.end();

@@ -1,0 +1,7 @@
+Detect and forward upstream error events to client
+
+- Handle "error" event type in both streaming and non-streaming modes
+- Return 502 with error.message instead of silent empty response
+- Fixes case where context-length-exceeded errors appeared as blank output
+
+Co-authored-by: CommandCodeBot <noreply@commandcode.ai>
