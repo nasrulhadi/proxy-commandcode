@@ -155,6 +155,10 @@ All requests logged to `proxy.log`:
 | `[upstream] timeout` | Upstream took >5 min. Retry. |
 | `EADDRINUSE` | Proxy auto-kills the old process on start. |
 
+## Disclaimer
+
+This project is for educational and research purposes only. It uses CommandCode's internal `/alpha/generate` endpoint, which is undocumented and may change or be restricted at any time. Use at your own risk and in accordance with CommandCode's Terms of Service.
+
 ## License
 
 MIT
