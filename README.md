@@ -158,11 +158,4 @@ All requests logged to `proxy.log`:
 ## License
 
 MIT
-m billing. |
-| `[upstream] 400` | Request format mismatch. Check proxy version. |
-| `[upstream] timeout` | Upstream took >5 min. Retry. |
-| `EADDRINUSE` | Proxy auto-kills the old process on start. |
 
-## License
-
-MIT
