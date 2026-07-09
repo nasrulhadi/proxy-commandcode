@@ -1,8 +1,0 @@
-Add startup banner, improve log format with duration/model/tokens
-
-- Clean box banner with endpoint info at startup
-- Log format: [req] model | IP | stream/sync | bytes
-- Log format: [upstream] status OK/ERR | model | latency
-- Log format: [done] model | text/reasoning/tools | reason | total ms
-
-Co-authored-by: CommandCodeBot <noreply@commandcode.ai>
