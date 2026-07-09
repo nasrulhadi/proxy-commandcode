@@ -105,31 +105,32 @@ Any editor with custom OpenAI endpoint support works the same way: point base UR
 
 ## Available models
 
-Open-weight models accessible on any plan:
+Open-weight models accessible on any plan (including Go). Use the exact slug as the model field.
 
-| Model |
-|---|
-| `deepseek/deepseek-v4-pro` |
-| `deepseek/deepseek-v4-flash` |
-| `moonshotai/Kimi-K2.5` |
-| `moonshotai/Kimi-K2.6` |
-| `moonshotai/Kimi-K2.7` |
-| `Qwen/Qwen3.7-Max` |
-| `Qwen/Qwen3.7-Plus` |
-| `Qwen/Qwen3.6-Max-Preview` |
-| `GLM/GLM-5.2` |
-| `GLM/GLM-5.1` |
-| `GLM/GLM-5` |
-| `MiniMax/MiniMax-M3` |
-| `MiniMax/MiniMax-M2.7` |
-| `MiniMax/MiniMax-M2.5` |
-| `MiMo/MiMo-V2.5-Pro` |
-| `MiMo/MiMo-V2.5` |
-| `stepfun/Step-3.7` |
-| `stepfun/Step-3.5-Flash` |
+| Model | Notes |
+|---|---|
+| `tencent/Hy3` | Free until 2026-07-21 |
+| `deepseek/deepseek-v4-pro` | |
+| `deepseek/deepseek-v4-flash` | |
+| `moonshotai/Kimi-K2.5` | |
+| `moonshotai/Kimi-K2.6` | |
+| `moonshotai/Kimi-K2.7` | |
+| `Qwen/Qwen3.7-Max` | |
+| `Qwen/Qwen3.7-Plus` | |
+| `Qwen/Qwen3.6-Max-Preview` | |
+| `GLM/GLM-5.2` | |
+| `GLM/GLM-5.1` | |
+| `GLM/GLM-5` | |
+| `MiniMax/MiniMax-M3` | |
+| `MiniMax/MiniMax-M2.7` | |
+| `MiniMax/MiniMax-M2.5` | |
+| `MiMo/MiMo-V2.5-Pro` | |
+| `MiMo/MiMo-V2.5` | |
+| `stepfun/Step-3.7` | |
+| `stepfun/Step-3.5-Flash` | |
 | `nvidia/Nemotron-3-Ultra` |
 
-> Model list may change. Check `GET /provider/v1/models` for current roster.
+> Slugs are case-sensitive (e.g. `tencent/Hy3`, not `tencent/HY3`). Model list may change — check `GET /provider/v1/models` for the current roster.
 
 ## Logs
 
