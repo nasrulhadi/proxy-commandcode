@@ -17,6 +17,35 @@ const logFile = fs.createWriteStream(path.join(__dirname, 'proxy.log'), { flags:
 function log(...a) { const l = `[${new Date().toISOString()}] ${a.join(' ')}`; process.stdout.write(l + '\n'); logFile.write(l + '\n'); }
 function logErr(...a) { const l = `[${new Date().toISOString()}] ERROR ${a.join(' ')}`; process.stderr.write(l + '\n'); logFile.write(l + '\n'); }
 
+const C = { reset: '\x1b[0m', cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', bold: '\x1b[1m' };
+function banner() {
+  const strip = s => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const pad = (s, w) => s + ' '.repeat(Math.max(0, w - strip(s).length));
+  const L = s => `${C.bold}${s}${C.reset}`;
+
+  const title = `${C.cyan}${C.bold}Proxy CommandCode${C.reset}`;
+  const sub   = `${C.dim}OpenAI → CommandCode /alpha/generate${C.reset}`;
+  const rows = [
+    `${L('Listening')}   http://localhost:${PORT}`,
+    `${L('Endpoint')}    /v1/chat/completions`,
+    `${L('Upstream')}    ${HOST}${PATH}`,
+    `${L('CC Version')}  ${CC_VERSION}`,
+    `${L('Debug')}       ${DEBUG ? `${C.green}ON${C.reset}` : `${C.yellow}OFF${C.reset}`}`,
+  ];
+
+  const all = [title, sub, ...rows];
+  const w = Math.max(...all.map(s => strip(s).length));
+  const box = s => `${C.cyan}│${C.reset}  ${pad(s, w)}  ${C.cyan}│${C.reset}`;
+
+  console.log(`${C.cyan}┌${'─'.repeat(w + 4)}┐${C.reset}`);
+  console.log(box(title));
+  console.log(box(sub));
+  console.log(`${C.cyan}├${'─'.repeat(w + 4)}┤${C.reset}`);
+  for (const r of rows) console.log(box(r));
+  console.log(`${C.cyan}└${'─'.repeat(w + 4)}┘${C.reset}`);
+}
+
+banner();
 log(`=== proxy started (debug: ${DEBUG ? 'ON' : 'OFF'}) ===`);
 
 const agent = new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 10, timeout: 300000 });
@@ -81,7 +110,7 @@ function transform(oaiBody) {
 
 // ── response handler ─────────────────────────────────────────────────────────
 
-function handleUpstreamResponse(proxyRes, res, model, isStream) {
+function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
   if (proxyRes.statusCode >= 400) {
     res.writeHead(proxyRes.statusCode, { ...CORS, 'Content-Type': 'application/json' });
     proxyRes.pipe(res);
@@ -131,7 +160,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream) {
         choices: [{ index: 0, message: msg, finish_reason: toolCalls.length > 0 ? 'tool_calls' : 'stop' }],
         usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       }));
-      log(`[done] text=${text.length} tools=${toolCalls.length}`);
+      log(`[done] ${model} | ${text.length} text / ${toolCalls.length} tools | stop | ${t0 ? Date.now() - t0 : 0}ms`);
     });
 
   } else {
@@ -171,7 +200,8 @@ function handleUpstreamResponse(proxyRes, res, model, isStream) {
       const reason = toolCalls.length > 0 ? 'tool_calls' : 'stop';
       write({ id: genId, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: {}, finish_reason: reason }] });
       res.write('data: [DONE]\n\n'); res.end();
-      log(`[done] text=${tChars} reasoning=${rChars} tools=${toolCalls.length} reason=${reason}`);
+      const dur = t0 ? Date.now() - t0 : 0;
+      log(`[done] ${model} | ${tChars} text / ${rChars} reasoning / ${toolCalls.length} tools | ${reason} | ${dur}ms`);
     });
   }
 
@@ -191,7 +221,10 @@ function handleRequest(req, res) {
   req.on('end', () => {
     let oai; try { oai = JSON.parse(body); } catch { res.writeHead(400, CORS); res.end(JSON.stringify({ error: 'Invalid JSON' })); return; }
     const model = oai.model || '-', isStream = oai.stream === true;
-    log(`[req] ${model} stream=${isStream}`);
+    const ip = req.socket.remoteAddress || '-';
+    const bytes = Buffer.byteLength(body);
+    const t0 = Date.now();
+    log(`[req] ${model} | ${ip} | ${isStream ? 'stream' : 'sync'} | ${bytes} bytes`);
 
     let upstream;
     try { upstream = transform(oai); } catch (e) { res.writeHead(500, CORS); res.end(JSON.stringify({ error: 'Transform error' })); return; }
@@ -200,8 +233,9 @@ function handleRequest(req, res) {
       hostname: HOST, path: PATH, method: 'POST', agent, timeout: 300000,
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(upstream), 'Authorization': auth, 'x-command-code-version': CC_VERSION },
     }, proxyRes => {
-      log(`[upstream] ${proxyRes.statusCode}`);
-      handleUpstreamResponse(proxyRes, res, model, isStream);
+      const ok = proxyRes.statusCode >= 200 && proxyRes.statusCode < 300;
+      log(`[upstream] ${proxyRes.statusCode} ${ok ? 'OK' : 'ERR'} | ${model} | ${Date.now() - t0}ms`);
+      handleUpstreamResponse(proxyRes, res, model, isStream, t0);
     });
     pr.setTimeout(300000, () => { logErr('[upstream] timeout'); pr.destroy(); if (!res.headersSent) { res.writeHead(504, CORS); res.end('{}'); } });
     pr.on('error', e => { logErr(`[upstream] ${e.message}`); if (!res.headersSent) { res.writeHead(502, CORS); res.end(JSON.stringify({ error: e.message })); } });
