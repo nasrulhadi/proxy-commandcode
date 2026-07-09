@@ -10,13 +10,14 @@ const { execSync } = require('child_process');
 const PORT = process.env.PCMC_PORT || 3456;
 const HOST = 'api.commandcode.ai';
 const PATH = '/alpha/generate';
-const CC_VERSION = process.env.PCMC_VERSION || '0.39.1';
+const CC_VERSION = process.env.PCMC_VERSION || '0.41.1';
+const DEBUG = process.env.PCMC_DEBUG === '1'; // set PCMC_DEBUG=1 to enable
 
 const logFile = fs.createWriteStream(path.join(__dirname, 'proxy.log'), { flags: 'a' });
 function log(...a) { const l = `[${new Date().toISOString()}] ${a.join(' ')}`; process.stdout.write(l + '\n'); logFile.write(l + '\n'); }
 function logErr(...a) { const l = `[${new Date().toISOString()}] ERROR ${a.join(' ')}`; process.stderr.write(l + '\n'); logFile.write(l + '\n'); }
 
-log('=== proxy started ===');
+log(`=== proxy started (debug: ${DEBUG ? 'ON' : 'OFF'}) ===`);
 
 const agent = new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 10, timeout: 300000 });
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' };
@@ -88,6 +89,11 @@ function handleUpstreamResponse(proxyRes, res, model, isStream) {
   }
 
   const genId = 'chatcmpl-' + Date.now();
+  const dump = DEBUG
+    ? (fs.mkdirSync(path.join(__dirname, 'dump'), { recursive: true }),
+       fs.createWriteStream(path.join(__dirname, 'dump', `dump-${genId}.txt`)))
+    : null;
+  if (dump) log(`[debug] dumping to dump/dump-${genId}.txt`);
 
   if (!isStream) {
     // Non-streaming: collect all events → single JSON
@@ -96,6 +102,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream) {
 
 
     proxyRes.on('data', chunk => {
+      if (dump) dump.write(chunk);
       buf += chunk.toString();
       const lines = buf.split('\n'); buf = lines.pop();
       for (const line of lines) {
@@ -138,6 +145,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream) {
     const ensureRole = () => { if (!roleSent) { roleSent = true; write({ ...base(), choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }); } };
 
     proxyRes.on('data', chunk => {
+      if (dump) dump.write(chunk);
       buf += chunk.toString();
       const lines = buf.split('\n'); buf = lines.pop();
       for (const line of lines) {
@@ -167,7 +175,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream) {
     });
   }
 
-  proxyRes.on('error', () => { if (!res.writableEnded) res.end(); });
+  proxyRes.on('error', () => { if (dump) dump.end(); if (!res.writableEnded) res.end(); });
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -217,4 +225,17 @@ const server = http.createServer(handleRequest);
 server.timeout = 300000; server.keepAliveTimeout = 120000;
 server.listen(PORT, () => log(`listening on http://localhost:${PORT}`));
 server.on('error', e => { if (e.code === 'EADDRINUSE') { logErr(`Port ${PORT} still in use after kill attempt`); process.exit(1); } throw e; });
-process.on('SIGINT', () => server.close(() => logFile.end(() => process.exit(0))));
+process.on('SIGINT', () => {
+  log('shutting down...');
+  // kill any remaining process on this port (cleanup stale listeners)
+  try {
+    const netstat = execSync(`netstat -ano | findstr :${PORT} | findstr LISTENING`, { encoding: 'utf8', timeout: 3000 });
+    const match = netstat.trim().match(/(\d+)\s*$/m);
+    if (match) {
+      const pid = match[1];
+      log(`killing leftover process on port ${PORT} (PID ${pid})`);
+      execSync(`taskkill /F /PID ${pid}`, { timeout: 3000 });
+    }
+  } catch {}
+  server.close(() => logFile.end(() => process.exit(0)));
+});

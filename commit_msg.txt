@@ -1,0 +1,8 @@
+Update README models, CC_VERSION 0.41.1, debug toggle, dump folder
+
+- Add tencent/Hy3 and full open-weight model slug table (case-sensitive)
+- Bump default CC_VERSION to 0.41.1
+- Gate debug dump behind PCMC_DEBUG=1 (default off), write to dump/
+- Add dump/ to .gitignore
+
+Co-authored-by: CommandCodeBot <noreply@commandcode.ai>

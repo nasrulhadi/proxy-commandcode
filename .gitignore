@@ -1,2 +1,4 @@
 .commandcode/
 proxy.log
+dump/
+dump-*.txt

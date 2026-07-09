@@ -48,7 +48,8 @@ Zero dependencies. Node.js 18+ only.
 | Variable | Default |
 |---|---|
 | `PCMC_PORT` | `3456` |
-| `PCMC_VERSION` | `0.39.1` |
+| `PCMC_VERSION` | `0.41.1` |
+| `PCMC_DEBUG` | off (set `1` to dump raw upstream responses to `dump/`) |
 
 ## Integration
 
@@ -149,6 +150,14 @@ All requests logged to `proxy.log`:
 | Log | Fix |
 |---|---|
 | `[upstream] 401` | Token invalid. Get a fresh one from billing. |
+| `[upstream] 400` | Request format mismatch. Check proxy version. |
+| `[upstream] timeout` | Upstream took >5 min. Retry. |
+| `EADDRINUSE` | Proxy auto-kills the old process on start. |
+
+## License
+
+MIT
+m billing. |
 | `[upstream] 400` | Request format mismatch. Check proxy version. |
 | `[upstream] timeout` | Upstream took >5 min. Retry. |
 | `EADDRINUSE` | Proxy auto-kills the old process on start. |
