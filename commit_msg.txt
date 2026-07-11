@@ -1,0 +1,8 @@
+Update README logs section and debug docs
+
+- Update log examples to match new timestamped/colored format
+- Add color legend (req/upstream/done/error)
+- Add debug enable instructions for PS, CMD, Linux/macOS/WSL
+- Add context-length-exceeded error to common errors table
+
+Co-authored-by: CommandCodeBot <noreply@commandcode.ai>

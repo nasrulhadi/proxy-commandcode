@@ -14,8 +14,20 @@ const CC_VERSION = process.env.PCMC_VERSION || '0.41.1';
 const DEBUG = process.env.PCMC_DEBUG === '1'; // set PCMC_DEBUG=1 to enable
 
 const logFile = fs.createWriteStream(path.join(__dirname, 'proxy.log'), { flags: 'a' });
-function log(...a) { const l = `[${new Date().toISOString()}] ${a.join(' ')}`; process.stdout.write(l + '\n'); logFile.write(l + '\n'); }
-function logErr(...a) { const l = `[${new Date().toISOString()}] ERROR ${a.join(' ')}`; process.stderr.write(l + '\n'); logFile.write(l + '\n'); }
+function writeLog(level, msg) {
+  const ts = `[${new Date().toISOString()}]`;
+  const colors = { req: C.cyan, upstream: C.green, done: C.bold, error: C.yellow, default: C.reset };
+  const c = colors[level] || C.reset;
+  const tag = level ? `${c}${level}${C.reset}` : '';
+  const full = `${C.dim}${ts}${C.reset} ${tag ? `[${tag}] ` : ''}${msg}`;
+  process.stdout.write(full + '\n');
+  logFile.write(`${ts}${tag ? ` [${level}] ` : ' '}${msg}\n`);
+}
+function logReq(...a)   { writeLog('req', a.join(' ')); }
+function logUp(...a)    { writeLog('upstream', a.join(' ')); }
+function logDone(...a)  { writeLog('done', a.join(' ')); }
+function logErr(...a)   { writeLog('error', a.join(' ')); }
+function log(...a)      { writeLog('', a.join(' ')); }
 
 const C = { reset: '\x1b[0m', cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', dim: '\x1b[2m', bold: '\x1b[1m' };
 function banner() {
@@ -153,7 +165,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
         try { const evt = JSON.parse(buf.trim()); if (evt.type === 'error') errorMsg = evt.error?.message || JSON.stringify(evt.error); else if (evt.type === 'text-delta') fullText += evt.text || ''; else if (evt.type === 'reasoning-delta') fullReasoning += evt.text || ''; } catch {}
       }
       if (errorMsg) {
-        log(`[error] ${model} | ${errorMsg}`);
+      logErr(`[error] ${model} | ${errorMsg}`);
         res.writeHead(502, { ...CORS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: { message: errorMsg, type: 'upstream_error', code: 'context_length_exceeded' } }));
         return;
@@ -167,7 +179,7 @@ function handleUpstreamResponse(proxyRes, res, model, isStream, t0) {
         choices: [{ index: 0, message: msg, finish_reason: toolCalls.length > 0 ? 'tool_calls' : 'stop' }],
         usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
       }));
-      log(`[done] ${model} | ${text.length} text / ${toolCalls.length} tools | stop | ${t0 ? Date.now() - t0 : 0}ms`);
+      logDone(`${model} | ${text.length} text / ${toolCalls.length} tools | stop | ${t0 ? Date.now() - t0 : 0}ms`);
     });
 
   } else {
@@ -242,7 +254,7 @@ function handleRequest(req, res) {
     const ip = req.socket.remoteAddress || '-';
     const bytes = Buffer.byteLength(body);
     const t0 = Date.now();
-    log(`[req] ${model} | ${ip} | ${isStream ? 'stream' : 'sync'} | ${bytes} bytes`);
+    logReq(`${model} | ${ip} | ${isStream ? 'stream' : 'sync'} | ${bytes} bytes`);
 
     let upstream;
     try { upstream = transform(oai); } catch (e) { res.writeHead(500, CORS); res.end(JSON.stringify({ error: 'Transform error' })); return; }
@@ -252,7 +264,7 @@ function handleRequest(req, res) {
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(upstream), 'Authorization': auth, 'x-command-code-version': CC_VERSION },
     }, proxyRes => {
       const ok = proxyRes.statusCode >= 200 && proxyRes.statusCode < 300;
-      log(`[upstream] ${proxyRes.statusCode} ${ok ? 'OK' : 'ERR'} | ${model} | ${Date.now() - t0}ms`);
+      logUp(`${proxyRes.statusCode} ${ok ? 'OK' : 'ERR'} | ${model} | ${Date.now() - t0}ms`);
       handleUpstreamResponse(proxyRes, res, model, isStream, t0);
     });
     pr.setTimeout(300000, () => { logErr('[upstream] timeout'); pr.destroy(); if (!res.headersSent) { res.writeHead(504, CORS); res.end('{}'); } });

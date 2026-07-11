@@ -49,7 +49,26 @@ Zero dependencies. Node.js 18+ only.
 |---|---|
 | `PCMC_PORT` | `3456` |
 | `PCMC_VERSION` | `0.41.1` |
-| `PCMC_DEBUG` | off (set `1` to dump raw upstream responses to `dump/`) |
+| `PCMC_DEBUG` | off (set `1` to enable) |
+
+### Enabling debug mode
+
+**PowerShell:**
+```
+$env:PCMC_DEBUG="1"; node server.js
+```
+
+**Command Prompt:**
+```
+set PCMC_DEBUG=1 && node server.js
+```
+
+**macOS / Linux / WSL:**
+```
+PCMC_DEBUG=1 node server.js
+```
+
+When enabled, raw upstream responses are dumped to `dump/` for troubleshooting.
 
 ## Integration
 
@@ -134,17 +153,24 @@ Open-weight models accessible on any plan (including Go). Use the exact slug as 
 
 ## Logs
 
-All requests logged to `proxy.log`:
+All requests are logged to both terminal (colorized) and `proxy.log` (plain text):
 
 ```
-[req] deepseek/deepseek-v4-pro stream=true
-[upstream] 200
-[done] text=1052 reasoning=38 tools=2 reason=tool_calls
+[2026-07-09T09:10:06.092Z] [req] tencent/Hy3 | ::1 | sync | 232 bytes
+[2026-07-09T09:10:07.137Z] [upstream] 200 OK | tencent/Hy3 | 1045ms
+[2026-07-09T09:10:09.303Z] [done] tencent/Hy3 | 92 text / 0 tools | stop | 3211ms
 ```
 
-- `text` + `reasoning` = total characters in response
-- `tools` = number of tool calls the model made
-- `reason` = `stop` (finished) or `tool_calls` (waiting for tool results)
+**Color legend (terminal only):**
+- `[req]` — cyan — incoming request with model, client IP, stream mode, byte size
+- `[upstream]` — green — HTTP status, model, latency to CommandCode
+- `[done]` — bold — text / reasoning / tool counts, finish reason, total duration
+- `[error]` — yellow — upstream or internal errors
+
+**Log fields:**
+- `text` / `reasoning` — total characters of each type in the response
+- `tools` — number of tool calls the model made
+- `reason` — `stop` (finished) or `tool_calls` (waiting for tool results)
 
 ### Common errors
 
@@ -153,6 +179,7 @@ All requests logged to `proxy.log`:
 | `[upstream] 401` | Token invalid. Get a fresh one from billing. |
 | `[upstream] 400` | Request format mismatch. Check proxy version. |
 | `[upstream] timeout` | Upstream took >5 min. Retry. |
+| `[error] context length` | Prompt too large for model (e.g. ~520K tokens vs 256K max). Reduce messages or switch to a higher-context model. |
 | `EADDRINUSE` | Proxy auto-kills the old process on start. |
 
 ## Disclaimer
